@@ -1,0 +1,35 @@
+let tcp = require("libtcp")
+
+pub fn writer(conn: any) {
+  while (true) {
+    let msg = read()
+    tcp.write(conn, msg .. "\n")
+  }
+}
+
+pub fn reader(conn: any) {
+  while (true) {
+    let msg, closed = tcp.read(conn)
+    if (closed) { return }
+    write(msg)
+  }
+}
+
+pub fn waitForCtrlC() {
+  let leftCtrl = false
+  let rightCtrl = false
+
+  while (true) {
+    let e, k = os.pullEvent()
+    if (e == "key") {
+      leftCtrl = leftCtrl || k == keys.leftCtrl
+      rightCtrl = rightCtrl || k == keys.rightCtrl
+      if ((leftCtrl || rightCtrl) && k == keys.c) {
+        return
+      }
+    } elseif (e == "key_up") {
+      leftCtrl = leftCtrl && k != keys.leftCtrl
+      rightCtrl = rightCtrl && k != keys.rightCtrl
+    }
+  }
+}

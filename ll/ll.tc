@@ -1,0 +1,116 @@
+let paths = require("paths")
+
+let args = any { ... }
+
+fn read_all(abs_path: any) {
+  let h = io.open(abs_path, "r")
+
+  if (!h) {
+    error(string.format("%s: couldn't open file", abs_path), 0)
+  }
+
+  let src = h.read(h, "a")
+
+  h.close(h)
+
+  return src
+}
+
+let opts = any {}
+opts.inputs = any {}
+opts.output = io.stdout
+opts.entry = nil
+
+let i = 1
+while (i <= #args) {
+  let arg = args[i]
+
+  if (arg == "-o") {
+    i = i + 1
+    arg = args[i]
+    opts.output = io.open(shell.resolve(arg), "w")
+    assert(opts.output, "Could not open file '" .. arg .. "'")
+  } else {
+    opts.inputs[#opts.inputs + 1] = shell.resolve(arg)
+  }
+
+  i = i + 1
+}
+
+let root_dir = paths.first_common_ancestor(opts.inputs)
+
+if (!root_dir) {
+  error("no inputs given", 0)
+}
+
+fn get_package_name(abs_path: any) {
+  let rel_path = abs_path
+
+  if (opts.root != "") {
+    rel_path = string.sub(abs_path, #root_dir + 2)
+  }
+
+  let pkg_name = string.gsub(rel_path, "/", ".")
+  let pkg_prefix = string.gsub(fs.getDir(rel_path), "/", ".")
+
+  if (pkg_prefix != "") {
+    pkg_prefix = pkg_prefix .. "."
+  }
+
+  return pkg_name, pkg_prefix
+}
+
+let h = opts.output
+
+h.write(h, table.concat(
+  any {
+    "local R,require=(function()",
+      "local r,R,c=require,{},{}",
+      "return R,function(p)",
+        "p=p:gsub('/','.')",
+        "local m=c[p] or c[p..'.lua']",
+          "or c[p..'.init'] or c[p..'.init.lua']",
+        "if m then return m end",
+        "m=(R[p] or R[p..'.lua'] or",
+          "R[p..'.init'] or R[p..'.init.lua'] or r)(p)",
+        "c[p]=m",
+        "return m",
+      "end",
+    "end)()",
+    "local function __llReqPre(pre)",
+      "return function(p) return require(pre..p) end",
+    "end",
+  },
+  "\n",
+))
+h.write(h, "\n")
+
+fn bundle(import_name: any, pkg_prefix: any, src: any) {
+  h.write(h, string.format(
+    "R[%q]=function(...) local require=__llReqPre(%q)\n",
+    import_name,
+    pkg_prefix,
+  ))
+  h.write(h, src)
+  h.write(h, "\nend\n")
+}
+
+let i = 1
+while (i <= #opts.inputs) {
+  let path = opts.inputs[i]
+  let src = read_all(path)
+  let pkg_name, pkg_prefix = get_package_name(path)
+
+  bundle(pkg_name, pkg_prefix, src)
+  i = i + 1
+}
+
+if (#opts.inputs > 0) {
+  let path = opts.inputs[1]
+  let pkg_name = get_package_name(path)
+  
+  h.write(h, string.format("return R[%q](...)\n", pkg_name))
+}
+
+h.flush(h)
+h.close(h)

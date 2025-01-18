@@ -1,0 +1,156 @@
+let CWD = "/" .. shell.dir()
+
+let args = any { ... }
+let opts = any {}
+opts.dryRun = false
+opts.target = nil
+
+let i = 1
+while (i <= #args) {
+  let arg = args[i]
+  if (arg == "--dry-run") {
+    opts.dryRun = true
+  } elseif (!opts.target) {
+    opts.target = arg
+  } else {
+    error("unexpected argument '" .. arg .. "'", 0)
+  }
+  i = i + 1
+}
+
+fn exec(cmd: any, ...) {
+  let old_fg = term.getTextColor()
+  term.setTextColor(colors.lightGray)
+  print(cmd, ...)
+  term.setTextColor(old_fg)
+
+  if (opts.dryRun) { return }
+
+  if (cmd == "mkdir") {
+    fs.makeDir(...)
+  } else {
+    shell.execute(cmd, ...)
+  }
+}
+
+fn validateTarget(t: any) {
+  assert(#t.files > 0, "target '" .. t.name .. "' doesn't have any file")
+
+  let entryCount = 0
+  let i = 1
+  while (i <= #t.files) {
+    let f = t.files[i]
+    if (f.entry) { entryCount = entryCount + 1 }
+    i = i + 1
+  }
+
+  if (entryCount == 0) {
+    error("target '" .. t.name .. "' is missing an entry point", 0)
+  } elseif (entryCount > 1) {
+    error("target '" .. t.name .. "' has more than one entry point", 0)
+  }
+}
+
+fn loadRecipe(path: any) {
+  path = path || shell.resolve("Recipe")
+
+  let dir = fs.getDir(path)
+  let r = any {}
+  r.defaultTarget = nil
+  r.targets = any {}
+
+  let env = any {}
+  let curTarget = nil
+  env.target = fn(name: any) {
+    assert(!r.targets[name], "redefinition of target '" .. name .. "'")
+
+    if (curTarget) {
+      validateTarget(curTarget)
+    }
+
+    let t = any {}
+    t.dir = "/" .. dir
+    t.name = name
+    t.files = any {}
+    t.entry = nil
+
+    r.targets[name] = t
+    curTarget = t
+
+    if (!r.defaultTarget) {
+      r.defaultTarget = name
+    }
+  }
+  env.files = fn(list: any) {
+    assert(curTarget, "no target")
+
+    let o = #curTarget.files
+    let i = 1
+    while (i <= #list) {
+      let def = list[i]
+
+      if (type(def) == "string") {
+        def = any { path = def }
+      }
+
+      def.absPath = "/" .. fs.combine(curTarget.dir, def.path)
+      curTarget.files[o + i] = def
+      i = i + 1
+    }
+  }
+  env.entry = fn(path: any) {
+    let f = any {}
+    f.entry = true
+    f.path = path
+    return f
+  }
+
+  loadfile(path, "t", env)()
+  assert(curTarget, "recipe doesn't contain any target")
+  validateTarget(curTarget)
+  return r
+}
+
+let recipe = loadRecipe()
+let targetName = opts.target || recipe.defaultTarget
+let target = recipe.targets[targetName]
+
+assert(target, "target '" .. targetName .. "' doesn't exist")
+
+let linkConfig = any {}
+linkConfig.entry = nil
+linkConfig.files = any {}
+
+let i = 1
+while (i <= #target.files) {
+  let f = target.files[i]
+  let srcPath = f.absPath
+
+  if (CWD != "") {
+    ; skip one for the last char and one for the `/` = skip 2
+    srcPath = string.sub(srcPath, #CWD + 2)
+  }
+
+  let dstName = string.gsub(srcPath, "%.tc$", ".lua")
+  let dstPath = fs.combine("target", "lua", target.name, dstName)
+  let dstParent = fs.getDir(dstPath)
+
+  if (f.entry) {
+    linkConfig.entry = dstPath
+  } else {
+    linkConfig.files[#linkConfig.files + 1] = dstPath
+  }
+
+  print(string.format("TCC     %s", dstName))
+
+  exec("mkdir", dstParent)
+  exec("tcc", "-o", dstPath, srcPath)
+  i = i + 1
+}
+
+exec(
+  "ll",
+  "-o", fs.combine("target", target.name),
+  linkConfig.entry,
+  table.unpack(linkConfig.files),
+)

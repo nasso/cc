@@ -1,0 +1,4 @@
+require("mpsc")
+require("wg")
+
+print("All tests passed!")

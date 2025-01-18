@@ -1,0 +1,25 @@
+let mpsc = require("mpsc")
+
+pub fn new() {
+  let tx, rx = mpsc.channel()
+  let count = 0
+
+  fn add(n: any) {
+    count = count + n
+    if (count == 0) { tx() }
+    if (count < 0) {
+      error("wait group counter went negative", 2)
+    }
+  }
+
+  fn done() {
+    add(-1)
+  }
+
+  fn wait() {
+    if (count == 0) { return }
+    rx()
+  }
+
+  return any { add = add, done = done, wait = wait }
+}

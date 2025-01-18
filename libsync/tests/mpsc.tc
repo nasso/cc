@@ -1,0 +1,71 @@
+let sync = require("libsync")
+let mpsc = sync.mpsc
+
+fn assertEq(left: any, right: any) {
+  if (left == right) { return }
+
+  printError("Assertion failed `left == right`:")
+  printError("  left = " .. textutils.serialize(left))
+  printError(" right = " .. textutils.serialize(right))
+  error()
+}
+
+fn txN(tx: any, n: any, calls: any, onEnd: any) {
+  for (i = 1, n) {
+    calls[#calls + 1] = "t"
+    tx(i)
+    calls[#calls + 1] = "T"
+  }
+
+  if (onEnd) { onEnd() }
+}
+
+fn rxN(rx: any, n: any, calls: any, onEnd: any) {
+  for (i = 1, n) {
+    calls[#calls + 1] = "r"
+    assertEq(rx(), i)
+    calls[#calls + 1] = "R"
+  }
+
+  if (onEnd) { onEnd() }
+}
+
+print("testing channel infinite buffer...")
+
+let tx, rx = mpsc.channel()
+let calls = any {}
+run txN(tx, 10, calls)
+rxN(rx, 10, calls)
+calls = table.concat(calls)
+assertEq(calls, "rtTtTtTtTtTtTtTtTtTtTRrRrRrRrRrRrRrRrRrR")
+
+print("testing bounded buffer...")
+
+let tx, rx = mpsc.channel(3)
+let calls = any {}
+run txN(tx, 10, calls)
+rxN(rx, 10, calls)
+calls = table.concat(calls)
+assertEq(calls, "rtTtTtTtRrRrRrTtTtTtRrRrRrTtTtTtRrRrRrTR")
+
+print("testing rendez-vous channel (rx first)...")
+
+let tx, rx = mpsc.channel(0)
+let calls = any {}
+run txN(tx, 10, calls)
+rxN(rx, 10, calls)
+calls = table.concat(calls)
+assertEq(calls, "rtTtRrTtRrTtRrTtRrTtRrTtRrTtRrTtRrTtRrTR")
+
+print("testing rendez-vous channel (tx first)...")
+
+let tx, rx = mpsc.channel(0)
+let onEnd, waitRxEnd = mpsc.channel()
+let calls = any {}
+run rxN(rx, 10, calls, onEnd)
+txN(tx, 10, calls) ; tx blocks in rdv channels
+waitRxEnd()
+calls = table.concat(calls)
+assertEq(calls, "trTtRrTtRrTtRrTtRrTtRrTtRrTtRrTtRrTtRrTR")
+
+print("mpsc channel tests passed")

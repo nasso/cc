@@ -1,0 +1,22 @@
+library "libtcp"
+  files {
+    entry "src/lib.tc",
+  }
+  libdirs { "/lib" }
+  libs { "net", "sync" }
+
+executable "example-client"
+  files {
+    entry "examples/client.tc",
+    "examples/utils.tc",
+  }
+  libdirs { "target", "/lib" }
+  libs { "tcp", "net", "sync" }
+
+executable "example-server"
+  files {
+    entry "examples/server.tc",
+    "examples/utils.tc",
+  }
+  libdirs { "target", "/lib" }
+  libs { "tcp", "net", "sync" }

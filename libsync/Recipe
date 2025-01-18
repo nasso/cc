@@ -1,0 +1,15 @@
+library "libsync"
+  files {
+    entry "src/lib.tc",
+    "src/mpsc.tc",
+    "src/wg.tc",
+  }
+
+executable "test"
+  files {
+    entry "tests/main.tc",
+    "tests/mpsc.tc",
+    "tests/wg.tc",
+  }
+  libdirs { "target" }
+  libs { "sync" }

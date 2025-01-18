@@ -1,0 +1,38 @@
+let utils = require("utils")
+let net = require("libnet")
+let tcp = require("libtcp")
+let rawAddr, rawPort = ...
+
+if (!rawAddr || !rawPort) {
+  error(string.format("usage: %s <address> <port>", arg[0]), 0)
+}
+
+let address = net.parse_addr(rawAddr)
+
+if (!address) {
+  error(string.format("'%s' is not a valid address", rawAddr), 0)
+}
+
+let port = tonumber(rawPort)
+
+if (!port) {
+  error(string.format("'%s' is not a valid port number", rawPort), 0)
+}
+
+print("Connecting to " .. address .. ":" .. port .. "...")
+let conn = tcp.connect(address, port)
+
+run utils.writer(conn)
+
+parallel.waitForAny(
+  fn() {
+    utils.reader(conn)
+    print("Connection closed by server")
+  },
+  fn() {
+    utils.waitForCtrlC()
+    print("Closing connection...")
+  },
+)
+
+tcp.close(conn)

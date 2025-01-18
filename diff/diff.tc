@@ -1,0 +1,45 @@
+let dir1, dir2 = ...
+
+fn eq(any a, any b) {
+  if (fs.isDir(a) != fs.isDir(b)) { return false }
+
+  if (!fs.isDir(a)) {
+    let h1 = io.open(a, "rb")
+    let h2 = io.open(b, "rb")
+    let s1 = h1.read(h1, "a")
+    let s2 = h2.read(h2, "a")
+    h1.close(h1)
+    h2.close(h2)
+
+    return s1 == s2
+  }
+
+  let afiles = fs.list(a)
+  let bfiles = fs.list(b)
+
+  if (#afiles != #bfiles) { return false }
+
+  table.sort(afiles)
+  table.sort(bfiles)
+
+  let i = 1
+  while (i <= #afiles) {
+    let apath = fs.combine(a, afiles[i])
+    let bpath = fs.combine(b, bfiles[i])
+
+    if (!eq(apath, bpath)) { return false }
+
+    i = i + 1
+  }
+
+  return true
+}
+
+dir1 = shell.resolve(dir1)
+dir2 = shell.resolve(dir2)
+
+if (eq(dir1, dir2)) {
+  print("Directories are the same")
+} else {
+  print("Directories differ")
+}

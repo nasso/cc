@@ -1,0 +1,37 @@
+let utils = require("utils")
+let net = require("libnet")
+let tcp = require("libtcp")
+let rawPort = ...
+
+if (!rawPort) {
+  error(string.format("usage: %s <port>", arg[0]), 0)
+}
+
+let port = tonumber(rawPort)
+
+if (!port) {
+  error(string.format("'%s' is not a valid port number", rawPort), 0)
+}
+
+print("Listening on port " .. port)
+let h = tcp.listen(port)
+
+let conn = tcp.accept(h)
+print("Received connection")
+
+tcp.close(h)
+
+run utils.writer(conn)
+
+parallel.waitForAny(
+  fn() {
+    utils.reader(conn)
+    print("Connection closed by client")
+  },
+  fn() {
+    utils.waitForCtrlC()
+    print("Closing connection...")
+  },
+)
+
+tcp.close(conn)

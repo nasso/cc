@@ -1,0 +1,119 @@
+let UID_ALPHABET =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
+
+fn uid(size: any) {
+  return string.gsub(
+    string.rep(".", size || 21),
+    ".",
+    fn() {
+      let i = math.floor(math.random() * 64)
+      return string.sub(UID_ALPHABET, i, i)
+    },
+  )
+}
+
+;; Create an mpsc (multi-producer single-consumer) channel.
+;
+; Returns a pair of function `tx` and `rx` to send and receive messages.
+;
+; `bufSize` can be:
+; * <0: infinite buffer size (default)
+; *  0: no buffer ("rendez-vous" channel, `tx` blocks until `rx`)
+; * >0: bounded buffer size (`tx` blocks until buffer has free room)
+pub fn channel(bufSize: any) {
+  bufSize = bufSize || -1 ; infinite
+
+  let id = uid()
+  let txEvt = "tx_" .. id
+  let rxEvt = "rx_" .. id
+  let rxReady = bufSize != 0 ; used only when bufSize == 0
+  let buffer = any { n = 0 }
+
+  ; when bufSize == 0:
+  ;   - rxEvt is used to signal that rx was called
+  ; when bufSize != 0:
+  ;   - txEvt is used to signal that the buffer was just made non-empty
+  ;   - rxEvt is used to signal that the buffer was popped
+
+  ; this might sound like the same thing but the key difference is that in
+  ; the first scenario, rxEvt is triggered *before* waiting for txEvt
+  ; otherwise, this would cause a deadlock, because rx would wait for txEvt
+  ; and tx would be waiting for rxEvt...
+
+  ; TODO: have different implementations of tx and rx for each case?
+
+  fn tx(...) {
+    ; for a non-zero `bufSize`, block while the buffer is full
+    ; note: we can't just `pullEvent` once and assume the buffer isn't
+    ;       full as other coroutines may be trying to write to it!
+    while (bufSize > 0 && buffer.n >= bufSize) {
+      os.pullEvent(rxEvt)
+    }
+
+    if (bufSize == 0) {
+      ; wait until `rx()` is ready to receive the message.
+      ; we have to loop here again because we can't assume rxReady will be
+      ; necessarily set
+      while (!rxReady) {
+        os.pullEvent(rxEvt)
+      }
+
+      ; send the message
+      os.queueEvent(txEvt, ...)
+
+      ; reset rxReady
+      ; necessary in case `tx()` is called again immediately!
+      rxReady = false
+    } else {
+      ; add the message to the buffer
+      buffer.n = buffer.n + 1
+      buffer[buffer.n] = any { ... }
+
+      ; notify the listener waiting on an empty buffer
+      if (buffer.n == 1) {
+        os.queueEvent(txEvt)
+      }
+    }
+  }
+
+  fn rx() {
+    ; handle rendez-vous
+    if (bufSize == 0) {
+      assert(!rxReady, "rx called multiple times concurrently")
+
+      ; set rxReady
+      ; this tells a subsequent `tx()` not to wait for rxEvt
+      rxReady = true
+
+      ; notify that we're ready to receive!
+      os.queueEvent(rxEvt)
+
+      let msg = any { os.pullEvent(txEvt) }
+
+      ; reset rxReady
+      ; necessary in case `rx()` is called again immediately but not
+      ; concurrently
+      rxReady = false
+
+      return table.unpack(msg, 2)
+    }
+
+    ; wait for the buffer to become non-empty
+    while (buffer.n == 0) {
+      os.pullEvent(txEvt)
+    }
+
+    ; pop the oldest message from the buffer (fifo)
+    let msg = table.remove(buffer, 1)
+    buffer.n = buffer.n - 1
+
+    ; notify that we've read from the buffer
+    ; this will allow any blocked `tx()` to push a message
+    ; its okay if these events accumulate, because senders are looping
+    os.queueEvent(rxEvt)
+
+    return table.unpack(msg)
+  }
+
+  return tx, rx
+}

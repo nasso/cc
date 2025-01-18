@@ -1,0 +1,107 @@
+let DEFAULT_MODEM = peripheral.find("modem")
+
+let LOCAL_ADDR = os.getComputerID()
+let LOCAL_CHANNEL = LOCAL_ADDR % 0xFFFF
+
+pub fn unpack_address(id: any) {
+    let a = id / 16581375 ; 255*255*255
+    a = math.floor(a)
+    id = id - a
+    let b = id / 65025 ; 255*255
+    b = math.floor(b)
+    id = id - b
+    let c = id / 255
+    c = math.floor(c)
+    id = id - c
+    let d = id
+
+    return a, b, c, d
+}
+
+pub fn addr(a: any, b: any, c: any, d: any) {
+    let value = d
+    let cc = c * 255
+    value = value + cc
+    let bb = b * 255 * 255
+    value = value + bb
+    let aa = a * 255 * 255 * 255
+    value = value + aa
+    return value
+}
+
+; format example : "24.98.12.65"
+pub fn parse_addr(str: any) {
+    let a, b, c, d = string.match(str, "^(%d+)%.(%d+)%.(%d+)%.(%d+)$")
+    if (a) {
+      return addr(a, b, c, d)
+    }
+    return nil
+}
+
+pub fn addr_to_string(a: any) {
+  return string.format("%d.%d.%d.%d", a[1], a[2], a[3], a[4])
+}
+
+pub fn open(modem: any) {
+    modem = modem || DEFAULT_MODEM
+    if (modem == nil) {
+        error("Modem not found", 1)
+    }
+    
+    if (!fs.isDir("/sys/libnet")) {
+        fs.makeDir("/sys/libnet")
+    }
+    
+    let connexions = fs.list("/sys/libnet")
+    if (#connexions <= 0) {
+        modem.open(LOCAL_CHANNEL)
+    }
+    let uuid = tostring(os.time()) .. tostring(math.random(1,100))
+    let filename = "connexion_" .. uuid
+    let file = fs.open("/sys/libnet/" .. filename, "w")
+    file.close()
+    return any { file = filename, modem = modem }
+}
+
+pub fn close(handle: any) {
+    fs.delete("/sys/libnet/" .. handle.file)
+    handle.file = nil
+    let connexions = fs.list("/sys/libnet")
+    if (#connexions <= 0) {
+        handle.modem.close(LOCAL_CHANNEL)
+    }
+}
+
+pub fn send(addr: any, msg: any, modem: any) {
+    let raw_msg = any { addr, LOCAL_ADDR, msg }
+
+    if (addr == LOCAL_ADDR) {
+      os.queueEvent(
+        "modem_message", ; event name
+        nil,             ; modem side
+        LOCAL_CHANNEL,   ; message channel
+        LOCAL_CHANNEL,   ; reply channel
+        raw_msg,         ; message payload
+        0,               ; distance
+      )
+      return
+    }
+
+    modem = modem || DEFAULT_MODEM
+    if (modem == nil) {
+        error("Modem not found", 1)
+    }
+    modem.transmit(addr % 0xFFFF, LOCAL_CHANNEL, raw_msg)
+}
+
+pub fn recv(handle: any) {
+    while (true) {
+        let event = any { os.pullEvent("modem_message") }
+        let message = event[5]
+        let address = message[1]
+        if (address == LOCAL_ADDR) {
+            return message[2], message[3]
+        }
+    }
+    return nil
+}

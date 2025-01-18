@@ -1,0 +1,4 @@
+target "craft"
+  files {
+    entry "src/craft.tc",
+  }

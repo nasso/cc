@@ -1,0 +1,76 @@
+fn map(t: any, f: any) {
+  let m = any {}
+  let n = #t
+  let i = 1
+  while (i <= n) {
+    m[i] = f(t[i])
+    i = i + 1
+  }
+  return m
+}
+
+; not a deep clone!
+fn clone(t: any) {
+  let c = any {}
+  let n = #t
+  let i = 1
+  while (i <= n) {
+    c[i] = t[i]
+    i = i + 1
+  }
+  return c
+}
+
+; this split function doesn't keep empty strings
+fn split(s: any, sep: any) {
+  let words = any {}
+  let cur = 1
+
+  while (true) {
+    let i, j = string.find(s, sep, cur, true)
+    if (!i) { break }
+
+    if (cur < i) {
+      words[#words + 1] = string.sub(s, cur, i - 1)
+    }
+    cur = j + 1
+  }
+  if (cur <= #s) {
+    words[#words + 1] = string.sub(s, cur)
+  }
+  return words
+}
+
+pub fn segments(p: any) {
+  return split(p, "/")
+}
+
+pub fn first_common_ancestor(paths: any) {
+  assert(#paths > 0, "expected non-empty list of paths")
+
+  let segmented_paths = map(paths, segments)
+  let ancestor = any {}
+
+  let i = 1
+  while (true) {
+    let common_segment = segmented_paths[1][i]
+    if (!common_segment) { break }
+
+    ; check if every other path has this segment (so we start at j=2)
+    let j, common = 2, true
+    while (j <= #segmented_paths) {
+      let segment = segmented_paths[j][i]
+      if (segment != common_segment) {
+        common = false
+        break
+      }
+      j = j + 1
+    }
+    if (!common) { break }
+
+    ; everyone has this segment, add it to the ancestor
+    ancestor[#ancestor + 1] = common_segment
+    i = i + 1
+  }
+  return table.concat(ancestor, "/")
+}

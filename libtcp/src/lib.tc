@@ -1,0 +1,194 @@
+let net = require("libnet")
+let sync = require("libsync")
+
+let EPHEMERAL_PORT_RANGE_START = 32768
+let EPHEMERAL_PORT_RANGE_END = 65535
+let EPHEMERAL_PORT_RANGE_LENGTH =
+  EPHEMERAL_PORT_RANGE_END - EPHEMERAL_PORT_RANGE_START
+
+let MSG_CONNECT = 1
+let MSG_ACCEPT = 2
+let MSG_PACKET = 3
+let MSG_ACK = 4
+let MSG_CLOSE = 5
+
+fn getEphemeralPort() {
+  return math.floor(
+    EPHEMERAL_PORT_RANGE_START +
+    math.random() * EPHEMERAL_PORT_RANGE_LENGTH
+  )
+}
+
+fn mkHandle(
+  netHandle: any,
+  modem: any,
+  srcPort: any,
+  dstAddr: any,
+  dstPort: any,
+  txStop: any,
+  rxMsg: any,
+) {
+  return any {
+    _h = netHandle,
+    _modem = modem,
+    _srcPort = srcPort,
+    _dstAddr = dstAddr,
+    _dstPort = dstPort,
+    _txStop = txStop,
+    _rxMsg = rxMsg,
+  }
+}
+
+fn recvLoop(h: any, srcAddr: any, srcPort: any, dstPort: any) {
+  let txMsg, rxMsg = sync.mpsc.channel()
+  let txStop, rxStop = sync.mpsc.channel(1)
+
+  run parallel.waitForAny(
+    rxStop,
+    fn() {
+      while (true) {
+        let addr, msg = net.recv(h)
+        if (addr != srcAddr)          { continue }
+        if (!msg)                     { return }
+        if (type(msg) != "table")     { continue }
+        if (!msg.tcp)                 { continue }
+        if (type(msg.tcp) != "table") { continue }
+        if (msg.tcp[1] == MSG_CLOSE)  {
+          if (msg.tcp[2] != srcPort) { continue }
+          if (msg.tcp[3] != dstPort) { continue }
+          txMsg(nil, true)
+          return
+        }
+        if (msg.tcp[1] == MSG_PACKET) {
+          if (msg.tcp[2] != srcPort) { continue }
+          if (msg.tcp[3] != dstPort) { continue }
+          txMsg(msg.tcp[4])
+        }
+      }
+    },
+  )
+
+  return txStop, rxMsg
+}
+
+pub fn listen(port: any, modem: any) {
+  let h = net.open(modem)
+  if (!h) { return }
+
+  return mkHandle(
+    h,     ; libnet handle
+    modem, ; modem
+    port,  ; source (server) port
+    nil,   ; dest (client) address
+    nil,   ; dest (client) port
+    nil,   ; txStop
+    nil,   ; rxMsg
+  )
+}
+
+pub fn connect(addr: any, serverPort: any, modem: any) {
+  let clientPort = getEphemeralPort()
+  let msg = any {
+    tcp = any { MSG_CONNECT, serverPort, clientPort },
+  }
+
+  let h = net.open(modem)
+  net.send(addr, msg, modem)
+
+  while (true) {
+    let servAddr, msg = net.recv(h, modem)
+
+    if (servAddr != addr) { continue }
+    if (type(msg) != "table") { continue }
+    if (!msg.tcp || type(msg.tcp) != "table") { continue }
+
+    let msgServerPort = msg.tcp[2]
+    let msgClientPort = msg.tcp[3]
+    let msg = msg.tcp[1]
+
+    if (msg != MSG_ACCEPT) { continue }
+    if (msgServerPort != serverPort) { continue }
+    if (msgClientPort != clientPort) { continue }
+
+    let txStop, rxMsg = recvLoop(h, addr, serverPort, clientPort)
+
+    return mkHandle(
+      h,
+      modem,
+      clientPort,
+      addr,
+      serverPort,
+      txStop,
+      rxMsg,
+    )
+  }
+}
+
+pub fn accept(h: any) {
+  while (true) {
+    let clientAddr, msg = net.recv(h._h)
+
+    if (type(msg) != "table") { continue }
+    if (!msg.tcp || type(msg.tcp) != "table") { continue }
+
+    let msgServerPort = msg.tcp[2]
+    let msgClientPort = msg.tcp[3]
+    let msg = msg.tcp[1]
+
+    if (msg != MSG_CONNECT) { continue }
+    if (msgServerPort != h._srcPort) { continue }
+
+    net.send(
+      clientAddr,
+      any { tcp = any { MSG_ACCEPT, h._srcPort, msgClientPort } },
+      h._modem,
+    )
+
+    let connH = net.open(h._modem)
+    let txStop, rxMsg = recvLoop(
+      connH,
+      clientAddr,
+      msgClientPort,
+      h._srcPort,
+    )
+
+    return mkHandle(
+      connH,
+      h._modem,
+      h._srcPort,
+      clientAddr,
+      msgClientPort,
+      txStop,
+      rxMsg,
+    )
+  }
+}
+
+pub fn close(h: any) {
+  if (h._dstAddr && h._dstPort) {
+    net.send(
+      h._dstAddr,
+      any { tcp = any { MSG_CLOSE, h._srcPort, h._dstPort } },
+      h._modem,
+    )
+  }
+  net.close(h._h)
+  h._h = nil
+  h._rxMsg = nil
+  if (h._txStop) {
+    h._txStop()
+    h._txStop = nil
+  }
+}
+
+pub fn write(h: any, msg: any) {
+  net.send(
+    h._dstAddr,
+    any { tcp = any { MSG_PACKET, h._srcPort, h._dstPort, msg } },
+    h._modem,
+  )
+}
+
+pub fn read(h: any) {
+  return h._rxMsg()
+}
