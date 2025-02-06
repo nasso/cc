@@ -1,0 +1,108 @@
+let VERSION = "nsd grep v1.1"
+let ORIG_FG = term.getTextColor()
+
+fn printUsage() {
+  let p = "  "..arg[0]
+  print(VERSION)
+  print("Usage:")
+  print(p.." {-v | --version}")
+  print(p.." {-h | --help}")
+  print(p.." [-nrF] <pattern> <file>...")
+}
+
+let args = any { ... }
+
+if (#args == 0) {
+  printUsage()
+  return
+}
+
+let flags = any {
+  numbers = false,
+  recurse = false,
+  plain = false,
+}
+
+while (string.byte(args[1], 1) == '-') {
+  let opt = table.remove(args, 1)
+
+  if (opt == "-v" || opt == "--version") {
+    print(VERSION)
+    return
+  }
+
+  if (opt == "-h" || opt == "--help") {
+    printUsage()
+    return
+  }
+
+  for (i = 2, #opt) {
+    let c = string.byte(opt, i)
+
+    if (c == 'h') {
+      printUsage()
+      return
+    } elseif (c == 'n') {
+      flags.numbers = true
+    } elseif (c == 'r') {
+      flags.recurse = true
+    } elseif (c == 'F') {
+      flags.plain = true
+    } else {
+      error("Unknown option: -"..string.char(c))
+    }
+  }
+}
+
+let pattern = table.remove(args, 1)
+let files = args
+
+if (!pattern) {
+  printUsage()
+  return
+}
+
+if (#files == 0) {
+  error("No files provided", 0)
+}
+
+let printFileNames = flags.recurse || #files > 1
+
+fn grepFile(path: any) {
+  let aPath = shell.resolve(path)
+
+  if (flags.recurse && fs.isDir(aPath)) {
+    let files = fs.list(aPath)
+    for (_, name in ipairs(files)) {
+      grepFile(fs.combine(path, name))
+    }
+    return
+  }
+
+  let file, e = fs.open(aPath, "r")
+  if (!file) {
+    error(e, 0)
+  }
+  let lineNumber = 0
+  while (true) {
+    lineNumber = lineNumber + 1
+    let line = file.readLine()
+    if (!line) { break }
+    let i, j = string.find(line, pattern, 1, flags.plain)
+    if (!i) { continue }
+    if (printFileNames) { write(path..":") }
+    if (flags.numbers) { write(lineNumber..":") }
+    term.setTextColor(colors.lightGray)
+    write(string.sub(line, 1, i - 1))
+    term.setTextColor(colors.red)
+    write(string.sub(line, i, j))
+    term.setTextColor(colors.lightGray)
+    print(string.sub(line, j + 1))
+    term.setTextColor(ORIG_FG)
+  }
+  file.close()
+}
+
+for (_, path in ipairs(files)) {
+  grepFile(path)
+}

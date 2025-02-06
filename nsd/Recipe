@@ -1,0 +1,4 @@
+executable "grep"
+  files {
+    entry "grep.tc",
+  }
