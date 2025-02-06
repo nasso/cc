@@ -1,0 +1,96 @@
+let uid = require("uid")
+
+let UPLOAD_URL = "https://0x0.st"
+let USER_AGENT = "nullptr/1.0 (by nasso.dev)"
+let BOUNDARY = "----nullptr-"..uid.new(32)
+let CONTENT_TYPE =
+  "multipart/form-data; boundary="..BOUNDARY
+
+fn printUsage() {
+  let p = "  "..arg[0]
+  print("Temporary file upload to 0x0.st")
+  print()
+  print("Usage:")
+  print(p.." put <file>")
+}
+
+fn readAll(path: any) {
+  let aPath = shell.resolve(path)
+  let file, emsg = fs.open(aPath, "rb")
+
+  if (!file) {
+    error(emsg, 0)
+  }
+
+  let bytes = file.readAll()
+  file.close()
+
+  return bytes
+}
+
+let op = ...
+
+if (
+  op == nil ||
+  op == "help" ||
+  op == "-h" ||
+  op == "--help"
+) {
+  printUsage()
+} elseif (op == "put") {
+  if (#arg > 2) {
+    error("Too many arguments", 0)
+  } elseif (#arg < 2) {
+    error("No file specified", 0)
+  }
+
+  let _, path = ...
+  let bytes = readAll(path)
+  let body = table.concat(any {
+    ; Preamble (unused, but must be here)
+    "",
+    "--"..BOUNDARY,
+    "Content-Disposition: form-data;"
+    .." name=\"expires\"",
+    "",
+    "1", ; expire in 1h
+    "--"..BOUNDARY,
+    "Content-Disposition: form-data;"
+    .." name=\"file\";"
+    .." filename=\"file\"",
+    "",
+    bytes,
+    "--"..BOUNDARY.."--",
+  }, "\r\n")
+
+  print("Uploading "..path)
+  let res, e = http.post(
+    UPLOAD_URL,
+    body,
+    any {
+      ["User-Agent"] = USER_AGENT,
+      ["Content-Type"] = CONTENT_TYPE,
+      ["Content-Length"] = #body,
+    },
+  )
+
+  if (!res) {
+    error(e, 0)
+  }
+
+  let headers = res.getResponseHeaders()
+  let url = res.readAll()
+  let expires = tonumber(headers["X-Expires"])
+  let oldfg = term.getTextColor()
+
+  print(
+    "Expires in 1h: "
+    ..os.date("!%c UTC", expires/1000)
+  )
+  write("-> ")
+  term.setTextColor(colors.blue)
+  print(url)
+  term.setTextColor(oldfg)
+} else {
+  error("Invalid operation", 0)
+}

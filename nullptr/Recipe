@@ -1,0 +1,5 @@
+executable "nullptr"
+  files {
+    entry "main.tc",
+    "uid.tc",
+  }

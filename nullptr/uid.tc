@@ -1,0 +1,20 @@
+let ABC =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+  .."abcdefghijklmnopqrstuvwxyz"
+  .."0123456789_-"
+
+let floor = math.floor
+let rand = math.random
+
+fn randChar() {
+  let i = floor(rand() * 64)
+  return string.sub(ABC, i, i)
+}
+
+pub fn new(size: any) {
+  return string.gsub(
+    string.rep(".", size || 21),
+    ".",
+    randChar,
+  )
+}
