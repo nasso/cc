@@ -1,0 +1,123 @@
+let NUL = string.char(0)
+
+fn pad(n: any, b: any) {
+  return (b - (n % b)) % b
+}
+
+fn nulTrunc(s: any) {
+  let idx = string.find(s, NUL)
+
+  if (idx) {
+    return string.sub(s, 1, idx - 1)
+  } else {
+    return s
+  }
+}
+
+fn allZeroes(s: any) {
+  for (i = 1, #s) {
+    if (string.byte(s, i, i) != 0) {
+      return false
+    }
+  }
+  return true
+}
+
+pub fn new(readFn: any, skipFn: any) {
+  return any {
+    r = readFn,
+    s = skipFn || readFn,
+    pendingSkip = 0,
+  }
+}
+
+pub fn next(s: any) {
+  ; skip any unread bytes
+  if (s.pendingSkip > 0) {
+    s.s(s.pendingSkip)
+  }
+
+  ; Read entire header
+  let h = s.r(512)
+
+  if (!h) {
+    ; eof
+    return nil
+  }
+
+  ; If it's all zeroes, we reached the end
+  if (allZeroes(h)) {
+    return nil
+  }
+
+  ; File name: 100 bytes
+  let path = nulTrunc(string.sub(h, 1, 100))
+
+  ; Skipping stuff we don't care for
+  ; - File mode: 8 bytes
+  ; - Owner ID: 8 bytes
+  ; - Group ID: 8 bytes
+
+  ; File size in bytes
+  let sizeStr = string.sub(h, 125, 136)
+  let size = tonumber(sizeStr, 8)
+  if (size == nil) {
+    error(
+      "Invalid entry size: '"..sizeStr.."'",
+      0,
+    )
+  }
+
+  ; Last modified: 12 bytes (skipped)
+
+  ; Header checksum: 8 bytes
+  let cksum = nulTrunc(string.sub(h, 149, 156))
+  let cksum = tonumber(cksum, 8)
+  if (!cksum) {
+    error("Corrupt header", 0)
+  }
+  for (i = 1, #h) {
+    if (i >= 149 && i <= 156) {
+      ; when calculating the checksum,
+      ; the checksum field itself must be
+      ; treated as if it was all spaces
+      cksum = cksum - ' '
+    } else {
+      cksum = cksum - string.byte(h, i, i)
+    }
+  }
+  if (cksum != 0) {
+    error("Corrupt header (invalid cksum)", 0)
+  }
+
+  ; Skip the rest of the header (we dont care)
+  ; - File/link type: 1 byte
+  ; - Name of linked file: 100 bytes
+
+  ; Now, the data!
+  let dataPadding = pad(size, 512)
+
+  ; skip for if the entry is never read
+  s.pendingSkip = size + dataPadding
+
+  let data = nil
+  return any {
+    path = path,
+    size = size,
+    getData = fn() {
+      if (!data) {
+        data = s.r(size)
+        if (!data || #data != size) {
+          error("Incomplete file", 0)
+        }
+        ; skip the padding on next read
+        s.pendingSkip = dataPadding
+      }
+      return data
+    },
+  }
+}
+
+pub fn entries(s: any) {
+  return next, s
+}

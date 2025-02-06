@@ -1,0 +1,160 @@
+let Writer = require("writer")
+let Reader = require("reader")
+
+let args = any { ... }
+let flags = table.remove(args, 1)
+let path = table.remove(args, 1)
+
+fn printUsage() {
+  print("Usage:")
+  print("  tar c[v]f <archive> <files> ...")
+  print("  tar x[v]f <archive>")
+  print("  tar t[v]f <archive>")
+}
+
+fn startsWith(a: any, prefix: any) {
+  return string.sub(a, 1, #prefix) == prefix
+}
+
+fn hasFlag(f: any) {
+  return string.find(flags, f, 1, true) != nil
+}
+
+fn parseMode(modes: any) {
+  let mode = nil
+  for (i = 1, #modes) {
+    let m = string.sub(modes, i, i)
+    if (hasFlag(m)) {
+      if (mode) { return nil }
+      mode = m
+    }
+  }
+  return mode
+}
+
+if (!flags || !path) {
+  printUsage()
+  return
+}
+
+let verbose = hasFlag("v")
+let mode = parseMode("cxt")
+let cwd = shell.dir()
+let aPath = shell.resolve(path)
+
+if (mode == "c") {
+  if (fs.exists(aPath)) {
+    error("File exists: "..path, 0)
+  }
+
+  let file, emsg = fs.open(aPath, "wb")
+  if (!file) {
+    if (emsg) { print(emsg) }
+    error("Can't write file: "..path, 0)
+  }
+  let writer = Writer.new(file.write)
+
+  fn cancel(msg: any) {
+    file.close()
+    fs.delete(aPath)
+    error(msg, 0)
+  }
+
+  fn appendFile(path: any) {
+    let aPath = shell.resolve(path)
+
+    if (!startsWith(aPath, cwd)) {
+      cancel("Not in current dir: "..path)
+    }
+
+    if (fs.isDir(aPath)) {
+      ; directory, recurse
+      let fileNames = fs.list(aPath)
+      for (_, name in ipairs(fileNames)) {
+        appendFile(fs.combine(path, name))
+      }
+      return
+    }
+
+    ; regular file (supposedly)
+    let file, emsg = fs.open(aPath, "rb")
+
+    if (!file) {
+      if (emsg) { print(emsg) }
+      cancel("Can't read file: "..path)
+    }
+
+    let data = file.readAll()
+    file.close()
+
+    Writer.append(writer, any {
+      path = path,
+      data = data,
+    })
+
+    if (verbose) {
+      print(path)
+    }
+  }
+
+  for (_, path in ipairs(args)) {
+    appendFile(path)
+  }
+
+  Writer.finish(writer)
+  file.close()
+} elseif (mode == "t" || mode == "x") {
+  let file, emsg = fs.open(aPath, "rb")
+  if (!file) {
+    if (emsg) { print(emsg) }
+    error("Can't read file: "..path, 0)
+  }
+  let reader = Reader.new(
+    file.read,
+    fn(n: any) {
+      file.seek("cur", n)
+    },
+  )
+
+  for (entry in Reader.entries(reader)) {
+    if (mode == "x") {
+      let aPath = shell.resolve(entry.path)
+
+      if (!startsWith(aPath, cwd)) {
+        error(
+          "Illegal path: "..entry.path,
+          0,
+        )
+      }
+
+      if (fs.exists(aPath)) {
+        error(
+          "File exists: "..entry.path,
+          0,
+        )
+      }
+
+      let file = fs.open(aPath, "wb")
+      file.write(entry.getData())
+      file.close()
+
+      if (verbose) {
+        print(entry.path)
+      }
+    } else {
+      if (verbose) {
+        print(string.format(
+          "% 8d %s",
+          entry.size,
+          entry.path,
+        ))
+      } else {
+        print(entry.path)
+      }
+    }
+  }
+
+  file.close()
+} else {
+  printUsage()
+}

@@ -1,0 +1,6 @@
+executable "tar"
+  files {
+    entry "main.tc",
+    "writer.tc",
+    "reader.tc",
+  }

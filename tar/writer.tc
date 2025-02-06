@@ -1,0 +1,66 @@
+let NUL = string.char(0)
+
+fn pad(n: any, b: any) {
+  return (b - (n % b)) % b
+}
+
+pub fn new(writeFn: any) {
+  return any {
+    w=writeFn,
+  }
+}
+
+pub fn append(s: any, entry: any) {
+  let size = #entry.data
+  let header = table.concat(any {
+    ; Name (path)
+    string.sub(
+      entry.path..string.rep(NUL, 100),
+      1,
+      100,
+    ),
+    ; File mode
+    "000644 ", NUL,
+    ; Owner ID
+    "000000 ", NUL,
+    ; Group ID
+    "000000 ", NUL,
+    ; File size in bytes
+    string.format("%011o ", size),
+    ; Last modified
+    "00000000000 ",
+    ; Header checksum (written later)
+    string.rep(" ", 8),
+    ; File/link type (normal/hard/symbolic)
+    NUL,
+    ; Name of linked filed (unused)
+    string.rep(NUL, 100),
+  })
+
+  ; compute checksum
+  let cksum = 0
+  for (i = 1, #header) {
+    let byte = string.byte(header, i)
+    cksum = cksum + byte
+  }
+
+  ; write the header with the computed cksum
+  s.w(string.sub(header, 1, 148))
+  s.w(
+    string.format("%06o"..NUL.." ", cksum)
+  )
+  s.w(string.sub(header, 157))
+
+  ; pad to 512 bytes
+  s.w(string.rep(NUL, pad(#header, 512)))
+
+  ; the data itself
+  s.w(entry.data)
+
+  ; pad to 512 bytes again
+  s.w(string.rep(NUL, pad(size, 512)))
+}
+
+pub fn finish(s: any) {
+  s.w(string.rep(NUL, 1024))
+}
