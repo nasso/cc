@@ -1,15 +1,17 @@
 let Writer = require("writer")
 let Reader = require("reader")
 
-let args = any { ... }
-let flags = table.remove(args, 1)
-let path = table.remove(args, 1)
+let VERSION = "nasso's tar v1.0.0"
+
+let flags, path = ...
 
 fn printUsage() {
+  let p = "  "..arg[0]
+  print(VERSION)
   print("Usage:")
-  print("  tar c[v]f <archive> <files> ...")
-  print("  tar x[v]f <archive>")
-  print("  tar t[v]f <archive>")
+  print(p.." c[v]f <archive> <files> ...")
+  print(p.." x[v]f <archive>")
+  print(p.." t[v]f <archive>")
 }
 
 fn startsWith(a: any, prefix: any) {
@@ -32,7 +34,21 @@ fn parseMode(modes: any) {
   return mode
 }
 
-if (!flags || !path) {
+if (
+  !flags ||
+  flags == "-h" ||
+  flags == "--help"
+) {
+  printUsage()
+  return
+}
+
+if (flags == "--version") {
+  print(VERSION)
+  return
+}
+
+if (!path) {
   printUsage()
   return
 }
@@ -43,14 +59,15 @@ let cwd = shell.dir()
 let aPath = shell.resolve(path)
 
 if (mode == "c") {
+  let paths = any { select(3, ...) }
+
   if (fs.exists(aPath)) {
     error("File exists: "..path, 0)
   }
 
   let file, emsg = fs.open(aPath, "wb")
   if (!file) {
-    if (emsg) { print(emsg) }
-    error("Can't write file: "..path, 0)
+    error(emsg, 0)
   }
   let writer = Writer.new(file.write)
 
@@ -80,15 +97,17 @@ if (mode == "c") {
     let file, emsg = fs.open(aPath, "rb")
 
     if (!file) {
-      if (emsg) { print(emsg) }
-      cancel("Can't read file: "..path)
+      error(emsg, 0)
     }
 
     let data = file.readAll()
     file.close()
 
+    let attributes = fs.attributes(aPath)
+
     Writer.append(writer, any {
       path = path,
+      modified = attributes.modified / 1000,
       data = data,
     })
 
@@ -97,7 +116,7 @@ if (mode == "c") {
     }
   }
 
-  for (_, path in ipairs(args)) {
+  for (_, path in ipairs(paths)) {
     appendFile(path)
   }
 
@@ -106,8 +125,7 @@ if (mode == "c") {
 } elseif (mode == "t" || mode == "x") {
   let file, emsg = fs.open(aPath, "rb")
   if (!file) {
-    if (emsg) { print(emsg) }
-    error("Can't read file: "..path, 0)
+    error(emsg, 0)
   }
   let reader = Reader.new(
     file.read,
@@ -134,9 +152,16 @@ if (mode == "c") {
         )
       }
 
-      let file = fs.open(aPath, "wb")
-      file.write(entry.getData())
-      file.close()
+      if (entry.isDir) {
+        fs.makeDir(aPath)
+      } else {
+        let file, emsg = fs.open(aPath, "wb")
+        if (!file) {
+          error(emsg, 0)
+        }
+        file.write(entry.getData())
+        file.close()
+      }
 
       if (verbose) {
         print(entry.path)
@@ -144,8 +169,10 @@ if (mode == "c") {
     } else {
       if (verbose) {
         print(string.format(
-          "% 8d %s",
+          "%s % 6d %s %s",
+          entry.isDir && "d" || "-",
           entry.size,
+          os.date("!%F %TZ", entry.modified),
           entry.path,
         ))
       } else {

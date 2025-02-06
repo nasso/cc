@@ -68,7 +68,9 @@ pub fn next(s: any) {
     )
   }
 
-  ; Last modified: 12 bytes (skipped)
+  ; Last modified: 12 bytes
+  let modified = string.sub(h, 137, 148)
+  let modified = tonumber(modified, 8)
 
   ; Header checksum: 8 bytes
   let cksum = nulTrunc(string.sub(h, 149, 156))
@@ -92,6 +94,7 @@ pub fn next(s: any) {
 
   ; Skip the rest of the header (we dont care)
   ; - File/link type: 1 byte
+  let typeflag = string.byte(h, 157)
   ; - Name of linked file: 100 bytes
 
   ; Now, the data!
@@ -104,6 +107,10 @@ pub fn next(s: any) {
   return any {
     path = path,
     size = size,
+    modified = modified,
+    isDir =
+      typeflag == '5' ||
+      string.byte(path, -1) == '/',
     getData = fn() {
       if (!data) {
         data = s.r(size)

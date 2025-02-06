@@ -12,6 +12,7 @@ pub fn new(writeFn: any) {
 
 pub fn append(s: any, entry: any) {
   let size = #entry.data
+  let mtime = entry.modified || 0
   let header = table.concat(any {
     ; Name (path)
     string.sub(
@@ -28,7 +29,7 @@ pub fn append(s: any, entry: any) {
     ; File size in bytes
     string.format("%011o ", size),
     ; Last modified
-    "00000000000 ",
+    string.format("%011o ", mtime),
     ; Header checksum (written later)
     string.rep(" ", 8),
     ; File/link type (normal/hard/symbolic)
