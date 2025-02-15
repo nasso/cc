@@ -21,7 +21,8 @@ local function getMax(name, nbt, p, slot,
 
   name = name:gsub("^minecraft:", ":")
   if not ITEM_LIMITS[name] then
-    ITEM_LIMITS[name] = p.getItemLimit(slot)
+    local detail = p.getItemDetail(slot)
+    ITEM_LIMITS[name] = detail.maxCount
     itemLimitsDirty = true
   end
   return ITEM_LIMITS[name]

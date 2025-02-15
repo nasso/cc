@@ -1,15 +1,20 @@
 local config = require("config")
-local version = "0.2.1"
+local version = "0.2.2"
 
-local USAGE = [[
+local USAGE = ([[
 USAGE
   $0 [opts] [repl] Start the REPL (default)
+  $0 [opts] gui    Start the GUI
+  $0 [opts] slurp  Start slurping items (yum!)
   $0 [opts] mkcfg  Write config to config path
 OPTIONS
   -h,--help        Show this message and exit
   -V,--version     Show the version and exit
   --config <path>  Specify path to config file
-]]
+]])
+  :gsub("^%s+", "")
+  :gsub("%s+$", "")
+  :gsub("%$0", arg[0] or "mc")
 
 local options = {
   config_file = "/etc/mc.conf",
@@ -30,7 +35,7 @@ local function parseArguments(args)
       options.exit = true
       return
     elseif arg == "--help" or arg == "-h" then
-      print(USAGE:gsub("%$0", args[0]))
+      print(USAGE)
       options.exit = true
       return
     elseif arg == "--config" then
@@ -49,7 +54,7 @@ local function parseArguments(args)
   options.mode = options.mode or "repl"
 end
 
-local function loadConfigFile(path, cfg)
+local function loadConfigFile(path)
   local f = fs.open(path, "r")
   if not f then return end
 
@@ -79,7 +84,13 @@ loadConfigFile(options.config_file)
 
 if options.mode == "repl" then
   local repl = require("repl")
-  repl.run(config)
+  repl.run()
+elseif options.mode == "gui" then
+  local gui = require("gui")
+  gui.run()
+elseif options.mode == "slurp" then
+  local slurp = require("slurp")
+  slurp.run()
 elseif options.mode == "mkcfg" then
   local path = options.config_file
   local f = fs.open(path, "w")

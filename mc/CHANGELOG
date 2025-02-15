@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2
+
+- feat: basic gui
+- feat: slurp mode (funny)
+- fix: wrong stack sizes on some versions
+
 ## 0.2.1
 
 - feat: `-h` and `--help` options

@@ -38,7 +38,7 @@ local function split(str, sep)
     return t
 end
 
-function M.run(config)
+function M.run()
   local history = {}
   local state = {}
 

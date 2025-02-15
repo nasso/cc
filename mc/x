@@ -5,11 +5,13 @@ local sources = {
   -- main must be first
   "main.lua",
   "config.lua",
-  "libmc/init.lua",
+  "libmc.lua",
   "repl/init.lua",
   "repl/cmd_get.lua",
   "repl/cmd_list.lua",
   "repl/cmd_put.lua",
+  "gui.lua",
+  "slurp.lua",
 }
 
 if args[1] == "help" then
