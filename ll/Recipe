@@ -1,0 +1,5 @@
+target "ll"
+  files {
+    entry "src/ll.tc",
+    "src/paths.tc",
+  }

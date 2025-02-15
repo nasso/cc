@@ -1,0 +1,6 @@
+library "libnet"
+  files {
+    entry "lib.tc",
+  }
+  libdirs { "/lib" }
+  libs { "uid" }

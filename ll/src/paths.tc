@@ -9,18 +9,6 @@ fn map(t: any, f: any) {
   return m
 }
 
-; not a deep clone!
-fn clone(t: any) {
-  let c = any {}
-  let n = #t
-  let i = 1
-  while (i <= n) {
-    c[i] = t[i]
-    i = i + 1
-  }
-  return c
-}
-
 ; this split function doesn't keep empty strings
 fn split(s: any, sep: any) {
   let words = any {}
@@ -73,4 +61,18 @@ pub fn first_common_ancestor(paths: any) {
     i = i + 1
   }
   return table.concat(ancestor, "/")
+}
+
+pub fn read_all(abs_path: any) {
+  let h = io.open(abs_path, "r")
+
+  if (!h) {
+    error(string.format("%s: couldn't open file", abs_path), 0)
+  }
+
+  let src = h.read(h, "a")
+
+  h.close(h)
+
+  return src
 }

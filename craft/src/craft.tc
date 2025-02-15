@@ -1,8 +1,21 @@
+let VERSION = "0.1.0"
+
 let CWD = "/" .. shell.dir()
+let DEFAULT_INSTALL_DIR = any {
+  executable = "/bin",
+  library = "/lib",
+}
 
 let args = any { ... }
 let opts = any {}
+opts.tcc = "tcc"
+opts.ll = "ll"
+opts.name = nil
 opts.dryRun = false
+opts.verbose = false
+opts.yes = false
+opts.install = false
+opts.installLocation = nil
 opts.target = nil
 
 let i = 1
@@ -10,6 +23,29 @@ while (i <= #args) {
   let arg = args[i]
   if (arg == "--dry-run") {
     opts.dryRun = true
+  } elseif (arg == "--verbose" || arg == "-v") {
+    opts.verbose = true
+  } elseif (arg == "--yes" || arg == "-y") {
+    opts.yes = true
+  } elseif (arg == "--install" || arg == "-i") {
+    opts.install = true
+  } elseif (arg == "--install-to") {
+    opts.install = true
+    i = i + 1
+    arg = args[i]
+    opts.installLocation = "/" .. shell.resolve(arg)
+  } elseif (arg == "--tcc") {
+    i = i + 1
+    arg = args[i]
+    opts.tcc = "/" .. shell.resolve(arg)
+  } elseif (arg == "--ll") {
+    i = i + 1
+    arg = args[i]
+    opts.ll = "/" .. shell.resolve(arg)
+  } elseif (arg == "--name") {
+    i = i + 1
+    arg = args[i]
+    opts.name = arg
   } elseif (!opts.target) {
     opts.target = arg
   } else {
@@ -19,11 +55,7 @@ while (i <= #args) {
 }
 
 fn exec(cmd: any, ...) {
-  let old_fg = term.getTextColor()
-  term.setTextColor(colors.lightGray)
-  print(cmd, ...)
-  term.setTextColor(old_fg)
-
+  if (opts.verbose) { print(cmd, ...) }
   if (opts.dryRun) { return }
 
   if (cmd == "mkdir") {
@@ -37,11 +69,8 @@ fn validateTarget(t: any) {
   assert(#t.files > 0, "target '" .. t.name .. "' doesn't have any file")
 
   let entryCount = 0
-  let i = 1
-  while (i <= #t.files) {
-    let f = t.files[i]
+  for (_, f in ipairs(t.files)) {
     if (f.entry) { entryCount = entryCount + 1 }
-    i = i + 1
   }
 
   if (entryCount == 0) {
@@ -62,6 +91,7 @@ fn loadRecipe(path: any) {
   let env = any {}
   let curTarget = nil
   env.target = fn(name: any) {
+    assert(type(name) == "string", "target name must be a string")
     assert(!r.targets[name], "redefinition of target '" .. name .. "'")
 
     if (curTarget) {
@@ -71,8 +101,11 @@ fn loadRecipe(path: any) {
     let t = any {}
     t.dir = "/" .. dir
     t.name = name
+    t.kind = "library"
+    t.static = true
     t.files = any {}
-    t.entry = nil
+    t.libs = any {}
+    t.libdirs = any {}
 
     r.targets[name] = t
     curTarget = t
@@ -81,12 +114,39 @@ fn loadRecipe(path: any) {
       r.defaultTarget = name
     }
   }
+  env.kind = fn(kind: any) {
+    assert(curTarget, "no target")
+
+    if (
+      kind != "executable" &&
+      kind != "library"
+    ) {
+      error("invalid target kind: '" .. kind .. "'", 0)
+    }
+
+    curTarget.kind = kind
+  }
+  env.static = fn(v: any) {
+    assert(curTarget, "no target")
+    assert(type(v) == "boolean", "value for 'static' must be a boolean")
+
+    curTarget.static = v
+  }
+  env.executable = fn(name: any) {
+    env.target(name)
+    env.kind("executable")
+    env.static(true)
+  }
+  env.library = fn(name: any) {
+    env.target(name)
+    env.kind("library")
+    env.static(false)
+  }
   env.files = fn(list: any) {
     assert(curTarget, "no target")
 
     let o = #curTarget.files
-    let i = 1
-    while (i <= #list) {
+    for (i = 1, #list) {
       let def = list[i]
 
       if (type(def) == "string") {
@@ -95,7 +155,22 @@ fn loadRecipe(path: any) {
 
       def.absPath = "/" .. fs.combine(curTarget.dir, def.path)
       curTarget.files[o + i] = def
-      i = i + 1
+    }
+  }
+  env.libdirs = fn(list: any) {
+    assert(curTarget, "no target")
+
+    let o = #curTarget.libdirs
+    for (i = 1, #list) {
+      curTarget.libdirs[o + i] = list[i]
+    }
+  }
+  env.libs = fn(list: any) {
+    assert(curTarget, "no target")
+
+    let o = #curTarget.libs
+    for (i = 1, #list) {
+      curTarget.libs[o + i] = list[i]
     }
   }
   env.entry = fn(path: any) {
@@ -117,13 +192,20 @@ let target = recipe.targets[targetName]
 
 assert(target, "target '" .. targetName .. "' doesn't exist")
 
-let linkConfig = any {}
-linkConfig.entry = nil
-linkConfig.files = any {}
+let lflags = any {}
+let lfiles = any {}
 
-let i = 1
-while (i <= #target.files) {
-  let f = target.files[i]
+if (target.static) {
+  for (_, dir in ipairs(target.libdirs)) {
+    lflags[#lflags + 1] = string.format("-L%s", dir)
+  }
+
+  for (_, lib in ipairs(target.libs)) {
+    lflags[#lflags + 1] = string.format("-l%s", lib)
+  }
+}
+
+for (_, f in ipairs(target.files)) {
   let srcPath = f.absPath
 
   if (CWD != "") {
@@ -136,21 +218,69 @@ while (i <= #target.files) {
   let dstParent = fs.getDir(dstPath)
 
   if (f.entry) {
-    linkConfig.entry = dstPath
+    ; entry point must be specified first
+    table.insert(lfiles, 1, dstPath)
   } else {
-    linkConfig.files[#linkConfig.files + 1] = dstPath
+    lfiles[#lfiles + 1] = dstPath
   }
 
   print(string.format("TCC     %s", dstName))
 
   exec("mkdir", dstParent)
-  exec("tcc", "-o", dstPath, srcPath)
-  i = i + 1
+  exec(opts.tcc, "--emit", "lua", "-o", dstPath, srcPath)
 }
 
-exec(
-  "ll",
-  "-o", fs.combine("target", target.name),
-  linkConfig.entry,
-  table.unpack(linkConfig.files),
-)
+let linker = any {
+  bundle = opts.ll,
+  library = opts.ll,
+  executable = opts.tcc,
+}
+linker = linker[target.kind]
+
+if (!linker) {
+  error("unknown target kind: " .. target.kind)
+}
+
+let outputName = opts.name || target.name
+let outputPath = fs.combine("target", outputName)
+let cmd = any {
+  linker, "-o", outputPath
+}
+
+for (_, f in ipairs(lfiles)) {
+  cmd[#cmd + 1] = f
+}
+for (_, f in ipairs(lflags)) {
+  cmd[#cmd + 1] = f
+}
+
+exec(table.unpack(cmd))
+
+if (opts.install) {
+  let absOutputPath = "/" .. shell.resolve(outputPath)
+  let installDir = opts.installLocation || DEFAULT_INSTALL_DIR[target.kind]
+  let installPath = "/" .. fs.combine(installDir, outputName)
+  let confirm = opts.yes
+
+  if (!confirm) {
+    if (fs.exists(installPath)) {
+      print("File already exists: " .. installPath)
+      write("Override? [y/N]: ")
+      let a = string.byte(read(), 1)
+      confirm = a == 'y' || a == 'Y'
+    } else {
+      confirm = true
+    }
+  }
+
+  if (confirm) {
+    print(outputPath .. " -> " .. installPath)
+
+    if (!opts.dryRun && absOutputPath != installPath) {
+      fs.delete(installPath)
+      fs.copy(absOutputPath, installPath)
+    } elseif (opts.dryRun) {
+      print("Installation skipped because of --dry-run")
+    }
+  }
+}

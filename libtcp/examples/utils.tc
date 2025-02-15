@@ -2,8 +2,8 @@ let tcp = require("libtcp")
 
 pub fn writer(conn: any) {
   while (true) {
-    let msg = read()
-    tcp.write(conn, msg .. "\n")
+    let msg = read() .. "\n"
+    tcp.write(conn, msg)
   }
 }
 

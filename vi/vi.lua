@@ -33,10 +33,14 @@ local HI_PALETTE = {
   ["mod"] = colors.purple,
   ["return"] = colors.purple,
   ["while"] = colors.purple,
+  ["for"] = colors.purple,
+  ["in"] = colors.purple,
   ["break"] = colors.purple,
+  ["continue"] = colors.purple,
   ["if"] = colors.purple,
   ["elseif"] = colors.purple,
   ["else"] = colors.purple,
+  ["run"] = colors.purple,
   ["("] = colors.red,
   [")"] = colors.red,
   ["["] = colors.red,
@@ -463,8 +467,8 @@ function drawLine(i)
         W_EDITOR.write("~")
     end
 
-    if hi then
-      local tokens = tclexer.scan(s)      
+    if hi and s then
+      local tokens = tclexer.scan(s)
 
       if tokens then
         for i = 1, #tokens do

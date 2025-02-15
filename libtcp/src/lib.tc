@@ -9,8 +9,7 @@ let EPHEMERAL_PORT_RANGE_LENGTH =
 let MSG_CONNECT = 1
 let MSG_ACCEPT = 2
 let MSG_PACKET = 3
-let MSG_ACK = 4
-let MSG_CLOSE = 5
+let MSG_CLOSE = 4
 
 fn getEphemeralPort() {
   return math.floor(
@@ -86,7 +85,7 @@ pub fn listen(port: any, modem: any) {
   )
 }
 
-pub fn connect(addr: any, serverPort: any, modem: any) {
+pub fn connect(addr: any, serverPort: any, modem: any, timeout: any) {
   let clientPort = getEphemeralPort()
   let msg = any {
     tcp = any { MSG_CONNECT, serverPort, clientPort },
@@ -96,8 +95,9 @@ pub fn connect(addr: any, serverPort: any, modem: any) {
   net.send(addr, msg, modem)
 
   while (true) {
-    let servAddr, msg = net.recv(h, modem)
+    let servAddr, msg = net.recv(h)
 
+    if (servAddr == nil) { return nil }
     if (servAddr != addr) { continue }
     if (type(msg) != "table") { continue }
     if (!msg.tcp || type(msg.tcp) != "table") { continue }

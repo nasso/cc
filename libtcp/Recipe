@@ -11,7 +11,7 @@ executable "example-client"
     "examples/utils.tc",
   }
   libdirs { "target", "/lib" }
-  libs { "tcp", "net", "sync" }
+  libs { "tcp", "net", "sync", "uid" }
 
 executable "example-server"
   files {
@@ -19,4 +19,4 @@ executable "example-server"
     "examples/utils.tc",
   }
   libdirs { "target", "/lib" }
-  libs { "tcp", "net", "sync" }
+  libs { "tcp", "net", "sync", "uid" }

@@ -1,4 +1,4 @@
-target "craft"
+executable "craft"
   files {
     entry "src/craft.tc",
   }

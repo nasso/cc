@@ -1,0 +1,149 @@
+let paths = require("paths")
+
+let args = any { ... }
+let opts = any {}
+opts.inputs = any {}
+opts.output = io.stdout
+opts.runtime = nil
+opts.libs = any {}
+opts.libdirs = any {}
+
+let i = 1
+while (i <= #args) {
+  let arg = args[i]
+
+  if (arg == "-o") {
+    i = i + 1
+    arg = args[i]
+    opts.output = io.open(shell.resolve(arg), "w")
+    assert(opts.output, "Could not open file '" .. arg .. "'")
+  } elseif (arg == "--runtime") {
+    i = i + 1
+    arg = args[i]
+    opts.runtime = shell.resolve(arg)
+    assert(fs.exists(opts.runtime), arg .. ": no such file")
+    assert(!fs.isDir(opts.runtime), arg .. ": is a directory")
+  } elseif (string.sub(arg, 1, 2) == "-l") {
+    opts.libs[#opts.libs + 1] = string.sub(arg, 3)
+  } elseif (string.sub(arg, 1, 2) == "-L") {
+    opts.libdirs[#opts.libdirs + 1] = shell.resolve(string.sub(arg, 3))
+  } else {
+    opts.inputs[#opts.inputs + 1] = shell.resolve(arg)
+  }
+
+  i = i + 1
+}
+
+fn find_lib(libname: any) {
+  let filename = string.format("lib%s", libname)
+
+  for (_, dir in ipairs(opts.libdirs)) {
+    let path = fs.combine(dir, filename)
+
+    if (fs.exists(path) && !fs.isDir(path)) {
+      return path
+    }
+  }
+}
+
+let root_dir = paths.first_common_ancestor(opts.inputs)
+
+if (!root_dir) {
+  error("no inputs given", 0)
+}
+
+fn get_package_name(abs_path: any) {
+  let rel_path = abs_path
+
+  if (opts.root != "") {
+    rel_path = string.sub(abs_path, #root_dir + 2)
+  }
+
+  return string.gsub(rel_path, "/", ".")
+}
+
+let h = opts.output
+
+; handle special case where the bundle is just 1 file (just copy the file)
+if (
+  #opts.inputs == 1 &&
+  #opts.libs == 0 &&
+  !opts.runtime
+) {
+  let path = opts.inputs[1]
+  let src = paths.read_all(path)
+  h.write(h, src)
+  h.close(h)
+  return
+}
+
+h.write(h, table.concat(
+  any {
+    "local R,require=(function()",
+      "local r,R,c=require,{},{}",
+      "return R,function(p)",
+        "p=p:gsub('/','.')",
+        "local m=c[p] or c[p..'.lua']",
+          "or c[p..'.init'] or c[p..'.init.lua']",
+        "if m then return m end",
+        "m=(R[p] or R[p..'.lua'] or",
+          "R[p..'.init'] or R[p..'.init.lua'] or r)(p)",
+        "c[p]=m",
+        "return m",
+      "end",
+    "end)()",
+  },
+  "\n",
+))
+h.write(h, "\n")
+
+fn bundle(import_name: any, src: any) {
+  h.write(h, string.format(
+    "R[%q]=function(...)\n",
+    import_name,
+  ))
+  h.write(h, src)
+  h.write(h, "end\n")
+}
+
+for (_, libname in ipairs(opts.libs)) {
+  let pkg_name = string.format("lib%s", libname)
+  let path = find_lib(libname)
+
+  if (!path) {
+    error("Could not find library '" .. pkg_name .. "'", 0)
+  }
+
+  let src = paths.read_all(path)
+
+  bundle(pkg_name, src)
+}
+
+for (_, path in ipairs(opts.inputs)) {
+  let src = paths.read_all(path)
+  let pkg_name = get_package_name(path)
+
+  bundle(pkg_name, src)
+}
+
+if (#opts.inputs > 0) {
+  let path = opts.inputs[1]
+  let pkg_name = get_package_name(path)
+
+  if (opts.runtime) {
+    let runtime_src = paths.read_all(opts.runtime)
+
+    bundle("_rt", runtime_src)
+    h.write(
+      h,
+      string.format(
+        "return require('_rt').start(R[%q], {...})\n",
+        pkg_name,
+      ),
+    )
+  } else {
+    h.write(h, string.format("return R[%q](...)\n", pkg_name))
+  }
+}
+
+h.close(h)
