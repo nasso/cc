@@ -1,0 +1,51 @@
+local args = { ... }
+
+local distDir = shell.resolve("dist")
+local sources = {
+  -- main must be first
+  "main.lua",
+  "commands.lua",
+  "cmd_get.lua",
+  "cmd_list.lua",
+  "cmd_put.lua",
+  "libmc/init.lua",
+}
+
+if args[1] == "help" then
+  print("Usage:")
+  print("  x build      Make a bundle")
+  print("  x tar        Create source tarball")
+  print("  x clean      Delete output dir")
+  print("  x install    Copy dist/mc to /bin")
+elseif args[1] == "build" then
+  fs.makeDir(distDir)
+  shell.execute(
+    "ll",
+    "-o", "dist/mc",
+    table.unpack(sources)
+  )
+elseif args[1] == "tar" then
+  local dest = "dist/mc.tar"
+  local files = {}
+  for _, p in ipairs(fs.list(shell.dir())) do
+    if p ~= "dist" then
+      files[#files+1] = p
+    end
+  end
+  fs.makeDir(distDir)
+  fs.delete(shell.resolve(dest))
+  shell.execute(
+    "tar",
+    "cvf", dest,
+    table.unpack(files)
+  )
+  print("-> "..dest)
+elseif args[1] == "install" then
+  local dest = "/bin/mc"
+  fs.delete(dest)
+  fs.copy(shell.resolve("dist/mc"), dest)
+elseif args[1] == "clean" then
+  fs.delete(distDir)
+else
+  error("Invalid arguments (try `x help`)")
+end

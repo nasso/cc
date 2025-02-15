@@ -1,0 +1,10 @@
+# Changelog
+
+## 0.2.0
+
+- feat: config file at /etc/mc.conf
+
+## 0.1.2
+
+- version that worked but you had to edit the
+  source to change the patterns (cringe)

@@ -1,9 +1,45 @@
-local version = "0.1.2"
+local version = "0.2.0"
+local args = { ... }
 
-local prompt = "% "
-local storePat = "minecraft:barrel_%d+"
-local storeExcludePat = "minecraft:barrel_222"
-local handPat = "minecraft:barrel_223"
+print("MegaChest " .. version)
+
+if
+  args[1] == "--version"
+  or args[1] == "-V"
+then
+  -- we already printed it lol
+  return
+end
+
+local config = {
+  prompt = "(mc) ",
+  store_pat = "chest",
+  hand_pat = "barrel",
+}
+
+local function readConfig(path)
+  local f = fs.open(path, "r")
+  if not f then return end
+
+  local data = f.readAll()
+  f.close()
+
+  data = textutils.unserialize(data)
+
+  if not data then
+    error("Syntax error in config file!", 0)
+  end
+
+  for k in pairs(config) do
+    if data[k] then
+      config[k] = data[k]
+    end
+  end
+
+  return f
+end
+
+readConfig("/etc/mc.conf")
 
 local history = {}
 local running = true
@@ -49,20 +85,19 @@ for
   _, name in
   ipairs(peripheral.getNames())
 do
-  if name:match(handPat) then
+  if name:match(config.hand_pat) then
     print("Mounting hand " .. name .. "...")
     state.hand:add(name)
-  elseif name:match(storePat) and not name:match(storeExcludePat) then
+  elseif name:match(config.store_pat) then
     print("Mounting store " .. name .. "...")
     state.store:add(name)
   end
 end
 
-print("MegaChest " .. version)
 print("Type 'help' for a list of commands.")
 
 while running do
-    term.write(prompt)
+    term.write(config.prompt)
 
     local cmd = read(nil, history)
     local cmdArgs = split(cmd)
