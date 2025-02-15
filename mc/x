@@ -4,11 +4,12 @@ local distDir = shell.resolve("dist")
 local sources = {
   -- main must be first
   "main.lua",
-  "commands.lua",
-  "cmd_get.lua",
-  "cmd_list.lua",
-  "cmd_put.lua",
+  "config.lua",
   "libmc/init.lua",
+  "repl/init.lua",
+  "repl/cmd_get.lua",
+  "repl/cmd_list.lua",
+  "repl/cmd_put.lua",
 }
 
 if args[1] == "help" then

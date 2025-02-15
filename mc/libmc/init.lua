@@ -1,9 +1,53 @@
+local ITEM_LIMITS = nil
+local itemLimitsDirty = false
+
+local function getMax(name, nbt, p, slot,
+                      cacheDir)
+  if nbt then
+    return 1
+  end
+
+  if not ITEM_LIMITS then
+    local path = fs.combine(cacheDir, "limits")
+    local f = fs.open(path, "r")
+    if f then
+      local data = f.readAll()
+      f.close()
+      ITEM_LIMITS = textutils.unserialize(data)
+    else
+      ITEM_LIMITS = {}
+    end
+  end
+
+  name = name:gsub("^minecraft:", ":")
+  if not ITEM_LIMITS[name] then
+    ITEM_LIMITS[name] = p.getItemLimit(slot)
+    itemLimitsDirty = true
+  end
+  return ITEM_LIMITS[name]
+end
+
+local function cacheItemLimits(cacheDir)
+  if not itemLimitsDirty then return end
+
+  local data = textutils.serialize(
+    ITEM_LIMITS,
+    { compact = true }
+  )
+  local path = fs.combine(cacheDir, "limits")
+  local f = fs.open(path, "w")
+  f.write(data)
+  f.close()
+  itemLimitsDirty = false
+end
+
 local MegaChest = {}
 MegaChest.__index = MegaChest
 
-function MegaChest.new()
+function MegaChest.new(cacheDir)
   local mc = {}
 
+  mc._cacheDir = cacheDir
   mc._ps = {}
   mc._freeLists = {}
   mc.items = {}
@@ -80,12 +124,14 @@ function MegaChest:sync(pname)
       slot.pname = pname
       slot.id = slotId
       slot.count = count
-      slot.max = p.getItemLimit(slotId)
+      slot.max = getMax(name, nbt, p, slotId,
+                        self._cacheDir)
 
       gInfo.total = gInfo.total + count
       table.insert(gInfo.slots, slot)
     end
   end
+  cacheItemLimits(self._cacheDir)
 end
 
 local function allocSlot(self, key)
@@ -160,8 +206,8 @@ function MegaChest:move(key, qty, dst)
       -- update slots info
       qty = qty - movedQty
       slot.count = slot.count - movedQty
-      dstSlot.max = dst._ps[dstSlot.pname].getItemLimit(dstSlot.id)
       dstSlot.count = dstSlot.count + movedQty
+      dstSlot.max = slot.max
 
       if qty <= 0 or movedQty == 0 then
         break
@@ -181,8 +227,7 @@ function MegaChest:move(key, qty, dst)
 
   -- update total info
   gInfo.total = gInfo.total - totalMoved
-  dst.items[key].total =
-    dst.items[key].total + totalMoved
+  dst.items[key].total = dst.items[key].total + totalMoved
 
   if gInfo.total == 0 then
     self.items[key] = nil

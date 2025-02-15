@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+- feat: `-h` and `--help` options
+- feat: `mkcfg` to create config file 
+- feat: cache item stack limits (VERY SPEED)
+
 ## 0.2.0
 
 - feat: config file at /etc/mc.conf

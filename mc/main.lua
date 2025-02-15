@@ -1,23 +1,55 @@
-local version = "0.2.0"
-local args = { ... }
+local config = require("config")
+local version = "0.2.1"
 
-print("MegaChest " .. version)
+local USAGE = [[
+USAGE
+  $0 [opts] [repl] Start the REPL (default)
+  $0 [opts] mkcfg  Write config to config path
+OPTIONS
+  -h,--help        Show this message and exit
+  -V,--version     Show the version and exit
+  --config <path>  Specify path to config file
+]]
 
-if
-  args[1] == "--version"
-  or args[1] == "-V"
-then
-  -- we already printed it lol
-  return
-end
-
-local config = {
-  prompt = "(mc) ",
-  store_pat = "chest",
-  hand_pat = "barrel",
+local options = {
+  config_file = "/etc/mc.conf",
+  mode = nil,
 }
 
-local function readConfig(path)
+print("MegaChest "..version)
+
+local function parseArguments(args)
+  local i = 1
+
+  while args[i] do
+    local arg = args[i]
+    i = i + 1
+
+    if arg == "--version" or arg == "-V" then
+      -- already printed
+      options.exit = true
+      return
+    elseif arg == "--help" or arg == "-h" then
+      print(USAGE:gsub("%$0", args[0]))
+      options.exit = true
+      return
+    elseif arg == "--config" then
+      options.config_file = args[i]
+      i = i + 1
+    elseif not options.mode then
+      options.mode = arg
+    else
+      printError("Unexpected argument: "..arg)
+      printError("Try --help for usage.")
+      options.exit = true
+      return
+    end
+  end
+
+  options.mode = options.mode or "repl"
+end
+
+local function loadConfigFile(path, cfg)
   local f = fs.open(path, "r")
   if not f then return end
 
@@ -35,84 +67,25 @@ local function readConfig(path)
       config[k] = data[k]
     end
   end
-
-  return f
 end
 
-readConfig("/etc/mc.conf")
+parseArguments(arg)
 
-local history = {}
-local running = true
-local commands = require("commands")
-
-commands.help = {
-    description = "Print this message";
-    run = function()
-        print("Available commands:")
-        for k, v in pairs(commands) do
-            print(k .. " - " .. v.description)
-        end
-    end;
-}
-
-commands.exit = {
-    description = "Quit the program";
-    run = function()
-        running = false
-    end;
-}
-
-local function split(str, sep)
-    sep = sep or "%s"
-
-    local t = {}
-    local pattern = "([^" .. sep .. "]+)"
-
-    for str in str:gmatch(pattern) do
-        table.insert(t, str)
-    end
-
-    return t
+if options.exit then
+  return
 end
 
-local mc = require("libmc")
-local state = {}
+loadConfigFile(options.config_file)
 
-state.store = mc.new()
-state.hand = mc.new()
-
-for
-  _, name in
-  ipairs(peripheral.getNames())
-do
-  if name:match(config.hand_pat) then
-    print("Mounting hand " .. name .. "...")
-    state.hand:add(name)
-  elseif name:match(config.store_pat) then
-    print("Mounting store " .. name .. "...")
-    state.store:add(name)
-  end
-end
-
-print("Type 'help' for a list of commands.")
-
-while running do
-    term.write(config.prompt)
-
-    local cmd = read(nil, history)
-    local cmdArgs = split(cmd)
-    local cmdName = table.remove(cmdArgs, 1) 
-
-    state.hand:syncAll()
-    table.insert(history, cmd)
-
-    if cmdName ~= nil then
-        local cmd = commands[cmdName]
-
-        if cmd == nil then
-            print("Unknown command")
-        else
-            cmd.run(state, table.unpack(cmdArgs))
-        end
-    end
+if options.mode == "repl" then
+  local repl = require("repl")
+  repl.run(config)
+elseif options.mode == "mkcfg" then
+  local path = options.config_file
+  local f = fs.open(path, "w")
+  f.write(textutils.serialize(config))
+  f.close()
+  print("Wrote config to "..path)
+else
+  error("Unknown command: "..mode, 0)
 end
