@@ -1,0 +1,16 @@
+target "tcc"
+  files {
+    entry "compiler/main.tc",
+    "compiler/utils.tc",
+    "compiler/lexer.tc",
+    "compiler/parser.tc",
+    "compiler/codegen.tc",
+    "compiler/scope.tc",
+    "compiler/ir.tc",
+    "compiler/emitter.tc",
+  }
+
+library "runtime"
+  files {
+    entry "runtime/rt.tc",
+  }

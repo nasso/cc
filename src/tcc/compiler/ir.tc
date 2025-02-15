@@ -1,0 +1,256 @@
+let M = any {}
+
+M.block = fn(parent: any) {
+  let b = any {}
+  b.stmts = any {}
+  b.i   = 0 ; block id
+  b.bc  = 0 ; block counter
+  b.lc  = 0 ; label counter
+  b.vc  = 0 ; var counter
+  b.ivc = 0 ; implicit var counter
+
+  if (parent) {
+    parent.bc = parent.bc + 1
+    b.i = parent.bc
+    b.parent = parent
+  }
+
+  return b
+}
+
+M.ret = fn(any b, any exprs) {
+  let stmt = any {}
+  stmt.ty = "return"
+  stmt.exprs = exprs
+  b.stmts[#b.stmts + 1] = stmt
+}
+
+M.brk = fn(any b) {
+  let stmt = any {}
+  stmt.ty = "break"
+  b.stmts[#b.stmts + 1] = stmt
+}
+
+M.goto = fn(b: any, label: any) {
+  let stmt = any {}
+  stmt.ty = "goto"
+  stmt.label = label
+  b.stmts[#b.stmts + 1] = stmt
+}
+
+M.labelStmt = fn(b: any, label: any) {
+  b.stmts[#b.stmts + 1] = label
+}
+
+M.branch = fn(any cond, any block) {
+  let b = any {}
+  b.cond = cond
+  b.block = block
+  return b
+}
+
+M.conditional = fn(any b, any branches) {
+  let stmt = any {}
+  stmt.ty = "conditional"
+  stmt.branches = branches
+  b.stmts[#b.stmts + 1] = stmt
+}
+
+M.loopWhile = fn(any b, any cond, any block) {
+  let stmt = any {}
+  stmt.ty = "while"
+  stmt.cond = cond
+  stmt.block = block
+  b.stmts[#b.stmts + 1] = stmt
+}
+
+M.loopFor = fn(
+  b: any,
+  var: any,
+  init: any,
+  limit: any,
+  step: any,
+  block: any,
+) {
+  let stmt = any {}
+  stmt.ty = "for"
+  stmt.var = var
+  stmt.init = init
+  stmt.limit = limit
+  stmt.step = step
+  stmt.block = block
+  b.stmts[#b.stmts + 1] = stmt
+}
+
+M.loopForIn = fn(b: any, vars: any, expr: any, block: any) {
+  let stmt = any {}
+  stmt.ty = "for_in"
+  stmt.vars = vars
+  stmt.expr = expr
+  stmt.block = block
+  b.stmts[#b.stmts + 1] = stmt
+}
+
+M.storeAll = fn(any b, any lvals, any rvals) {
+  let stmt = any {}
+  stmt.ty = "store"
+  stmt.lvals = lvals
+  stmt.rvals = rvals
+  b.stmts[#b.stmts + 1] = stmt
+}
+
+M.storeOne = fn(any b, any lval, any rval) {
+  return M.storeAll(b, any { lval }, any { rval })
+}
+
+M.callStmt = fn(any b, any expr) {
+  assert(expr.ty == "call", "expected call expression")
+
+  let stmt = any {}
+  stmt.ty = "call"
+  stmt.expr = expr
+  b.stmts[#b.stmts + 1] = stmt
+}
+
+M.lit = fn(any value) {
+  let lit = any {}
+  lit.ty = "literal"
+  lit.value = value
+  return lit
+}
+
+M.vararg = fn() {
+  let lit = any {}
+  lit.ty = "vararg"
+  return lit
+}
+
+M.label = fn(b: any) {
+  b.lc = b.lc + 1
+
+  let label = any {}
+  label.ty = "label"
+  label.b = b
+  label.i = b.lc
+  return label
+}
+
+M.var = fn(any b, any opts) {
+  let globalIdent = opts && opts.globalIdent
+  let implicit = opts && opts.implicit
+
+  let var = any {}
+  var.ty = "var"
+
+  if (globalIdent) {
+    var.ident = globalIdent
+  } else {
+    var.b = b
+  }
+
+  if (globalIdent || implicit) {
+    b.ivc = b.ivc + 1
+    var.i = b.ivc
+    var.implicit = true
+  } else {
+    b.vc = b.vc + 1
+    var.i = b.vc
+  }
+
+  return var
+}
+
+M.vars = fn(any b, any count, any opts) {
+  let vars = any {}
+
+  while (count > 0) {
+    vars[#vars + 1] = M.var(b, opts)
+    count = count - 1
+  }
+
+  return vars
+}
+
+M.function = fn(params: any, body_block: any, variadic: any) {
+  let func = any {}
+  func.ty = "function"
+  func.params = params
+  func.variadic = variadic
+  func.body = body_block
+  return func 
+}
+
+M.call = fn(any callee, any args) {
+  let expr = any {}
+  expr.ty = "call"
+  expr.callee = callee
+  expr.args = args
+  return expr
+}
+
+M.index = fn(any tbl, any idx) {
+  let expr = any {}
+  expr.ty = "index"
+  expr.tbl = tbl
+  expr.idx = idx
+  return expr
+}
+
+M.tableEntry = fn(any key, any value) {
+  let entry = any {}
+  entry.key = key
+  entry.value = value
+  return entry
+}
+
+M.tableConstructor = fn(any entries) {
+  let expr = any {}
+  expr.ty = "table"
+  expr.entries = entries
+  return expr
+}
+
+fn regUnop(any name) {
+  M[name] = fn(any expr) {
+    let op = any {}
+    op.ty = "unop"
+    op.op = name
+    op.expr = expr
+    return op
+  }
+}
+
+regUnop("pos")
+regUnop("neg")
+regUnop("not")
+regUnop("len")
+
+fn regBinop(any name, any funcName) {
+  M[funcName || name] = fn(any lhs, any rhs) {
+    let op = any {}
+    op.ty = "binop"
+    op.op = name
+    op.lhs = lhs
+    op.rhs = rhs
+    return op
+  }
+}
+
+regBinop("add")
+regBinop("sub")
+regBinop("mul")
+regBinop("div")
+regBinop("idiv")
+regBinop("mod", "mod1")
+regBinop("pow")
+regBinop("concat")
+regBinop("or")
+regBinop("and")
+regBinop("eq")
+regBinop("neq")
+regBinop("lte")
+regBinop("gte")
+regBinop("lt")
+regBinop("gt")
+
+return M

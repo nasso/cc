@@ -1,11 +1,11 @@
 # Monorepo for my Computer Craft projects
 
-My favorite Minecraft mod is Computer Craft (actually [CC: Tweaked][cct]). It's
-a mod that adds programmable computers to the game.
+My favorite Minecraft mod is ComputerCraft (actually [CC: Tweaked][cct]). It's a
+mod that adds programmable computers to the game.
 
 [cct]: https://tweaked.cc
 
-## What the fu-
+## About ComputerCraft
 
 The mod is very simple yet very addictive, and I can spend hours writing code in
 the game. Some people prefer using a real text editor and then import their code
@@ -18,23 +18,20 @@ is amazing and people have created insane things, but writing everything myself
 is how I personally enjoy this mod the most.
 
 This naturally requires a lot of code to be written, so I ended up making my own
-version of classic tools like `vi`, `tar`, `diff`, and even [my own programming
-language][typecraft] (Lua, the language used by the mod, is not statically
-typed, which makes it a little difficult to work with in the long run). I also
-have some Minecraft-specific programs, such as `mc` (MegaChest), `libnet` and
-`libtcp` (not an actual TCP implementation, more on that further down).
+version of classic tools like `vi`, `tar`, `diff`, and even my own programming
+language (Lua, the language used by the mod, is not statically typed, which
+makes it a little difficult to work with in the long run). I also have some
+Minecraft-specific programs, such as `mc` (MegaChest), `libnet` and `libtcp`
+(not an actual TCP implementation, more on that further down).
 
 ## Typecraft & Craft
 
 A lot of these are written in my own statically-typed programming language:
-[Typecraft]. I didn't want to include it here because I want it to have its own
-commit history (to make it easier to bootstrap). You can find the Typecraft
-compiler [here][typecraft]. Also, the `Recipe` files are used by Craft (which
-you can find in `craft/`) to build most projects. It's a minimalistic build
-system that I made only for the purpose of making it easier to build Typecraft
-projects (including the Typecraft compiler itself).
-
-[typecraft]: https://github.com/nasso/typecraft
+Typecraft. You can find the Typecraft compiler in `src/tcc`. Also, the `Recipe`
+files are used by Craft (which you can find in `src/craft`) to build most
+projects. It's a minimalistic build system that I made only for the purpose of
+making it easier to build Typecraft projects (including the Typecraft compiler
+itself). You can find builds (Lua) in `opt/*`.
 
 ## Disclaimer about names
 
