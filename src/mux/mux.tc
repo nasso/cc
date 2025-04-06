@@ -1,0 +1,279 @@
+let VERSION = "1.0.0"
+let TERM_ORIG = term.current()
+let TERM_W, TERM_H = term.getSize()
+let gArgs = table.pack(...)
+let gChildren = any {}
+let gCurrent = nil
+let gRunning = nil
+let gNavBar = window.create(TERM_ORIG, 1, TERM_H, TERM_W, 1, false)
+
+fn drawNav() {
+  gNavBar.clear()
+  gNavBar.setCursorPos(1, 1)
+  for (i, c in ipairs(gChildren)) {
+    gNavBar.write(" "..i..":"..c.title)
+    if (gCurrent == c) {
+      gNavBar.write("*")
+    }
+  }
+  if (gCurrent) {
+    gCurrent.win.restoreCursor()
+  }
+}
+
+fn status(msg: any, timeout: any) {
+  gNavBar.clear()
+  gNavBar.setCursorPos(1, 1)
+  gNavBar.write(msg)
+  if (gCurrent) {
+    gCurrent.win.restoreCursor()
+  }
+  sleep(timeout || 1)
+  drawNav()
+}
+
+fn focus(child: any) {
+  if (gCurrent) {
+    gCurrent.win.setVisible(false)
+  }
+
+  gCurrent = child
+
+  if (child) {
+    drawNav()
+    child.win.setVisible(true)
+  }
+}
+
+fn removeChild(child: any) {
+  for (i, c in ipairs(gChildren)) {
+    if (c == child) {
+      table.remove(gChildren, i)
+      if (child == gCurrent) {
+        focus(gChildren[i] || gChildren[i-1])
+      }
+      break
+    }
+  }
+}
+
+fn resume(child: any, evt: any, ...) {
+  if (child.filter && child.filter != evt) {
+    return
+  }
+
+  let oldTitle = child.title
+  let oldTerm = term.current()
+  let oldRunning = gRunning
+
+  child.filter = nil
+  term.redirect(child.win)
+  gRunning = child
+
+  let ok, a1 = coroutine.resume(child.co, evt, ...)
+
+  gRunning = oldRunning
+  term.redirect(oldTerm)
+
+  if (coroutine.status(child.co) == "dead") {
+    removeChild(child)
+    if (!ok) {
+      run status(child.title..": "..a1)
+    }
+  } elseif (ok) {
+    child.filter = a1
+    if (child.title != titleBefore) {
+      drawNav()
+    }
+  } else {
+    run status(child.title..": "..a1)
+  }
+}
+
+fn resumeAll(evt: any, ...) {
+  ; iterate in reverse in case one removes itself
+  for (i = #gChildren, 1, -1) {
+    resume(gChildren[i], evt, ...)
+  }
+}
+
+fn launchChild(tEnv: any, sProgramPath: any, ...) {
+  let args = table.pack(...)
+  let child = any {}
+
+  gChildren[#gChildren+1] = child
+  child.title = fs.getName(sProgramPath)
+  child.win = window.create(
+    TERM_ORIG,
+    1,      1,
+    TERM_W, TERM_H - 1,
+    false,
+  )
+  child.co = coroutine.create(fn() {
+    let ok = os["run"](tEnv, sProgramPath, table.unpack(args))
+    if (!ok) {
+      print("Press any key to continue")
+      os.pullEvent("key")
+    }
+  })
+  resume(child)
+  return child
+}
+
+let gMultishellApi = any {
+  getCurrent = fn() {
+    if (gRunning == nil) {
+      error("Not running a child")
+    }
+    for (i, c in ipairs(gChildren)) {
+      if (c == gRunning) {
+        return i
+      }
+    }
+    error("Couldn't find running process")
+  },
+  getFocus = fn() {
+    for (i, c in ipairs(gChildren)) {
+      if (c == gCurrent) {
+        return i
+      }
+    }
+    error("Couldn't find focused process")
+  },
+  setFocus = fn(n: any) {
+    let child = gChildren[n]
+    if (child) {
+      focus(gChildren[n])
+      return true
+    } else {
+      return false
+    }
+  },
+  getTitle = fn(n: any) {
+    let child = gChildren[n]
+    return child && child.title
+  },
+  setTitle = fn(n: any, title: any) {
+    let child = gChildren[n]
+    if (child && type(title) == "string") {
+      child.title = title
+    }
+  },
+  launch = fn(tEnv: any, sPath: any, ...) {
+    launchChild(tEnv, sPath, ...)
+    return #gChildren
+  },
+  getCount = fn() {
+    return #gChildren
+  },
+}
+
+fn openWindow(sProgram: any, ...) {
+  let sProgramPath = shell.resolveProgram(sProgram)
+  let tEnv = any {
+    shell = shell,
+    multishell = gMultishellApi,
+  }
+
+  let child = launchChild(tEnv, sProgramPath, ...)
+  focus(child)  
+  return child
+}
+
+if (gArgs[1]) {
+  let cmd = gArgs[1]
+  if (cmd == "--version" || cmd == "-V") {
+    print("Mux v"..VERSION)
+    return
+  } elseif (cmd == "--help" || cmd == "-h") {
+    print("Usage:")
+    print("  mux -h,--help")
+    print("  mux -V,--version")
+    print("  mux [command] [...]")
+    return
+  }
+
+  gNavBar.setVisible(true)
+  openWindow(table.unpack(gArgs))
+} else {
+  gNavBar.setVisible(true)
+  openWindow("shell")
+}
+
+let gInPrefix = false
+let gLCtrl = false
+let gRCtrl = false
+while (#gChildren > 0) {
+  let evt = table.pack(coroutine.yield())
+  let name = evt[1]
+
+  ; captured events only sent to the focused child
+  if (
+    name == "key"
+    || name == "key_up"
+    || name == "char"
+    || name == "mouse_click"
+    || name == "mouse_drag"
+    || name == "mouse_scroll"
+    || name == "mouse_up"
+    || name == "paste"
+    || name == "terminate"
+    || name == "file_transfer"
+  ) {
+    let code = evt[2]
+
+    ; track modifiers state
+    if (name == "key") {
+      gLCtrl = gLCtrl || code == keys.leftCtrl
+      gRCtrl = gRCtrl || code == keys.rightCtrl
+    } elseif (name == "key_up") {
+      gLCtrl = gLCtrl && code != keys.leftCtrl
+      gRCtrl = gRCtrl && code != keys.rightCtrl
+    }
+
+    let ctrl = gLCtrl || gRCtrl
+
+    if (gInPrefix) {
+      if (name == "key" && ctrl && code == keys.b) { 
+        ; send ctrl+b
+        resume(gCurrent, "key", keys.leftCtrl, false)
+        resume(gCurrent, "key", keys.b, false)
+        resume(gCurrent, "key_up", keys.b)
+        resume(gCurrent, "key_up", keys.leftCtrl)
+        gInPrefix = false
+      } elseif (name == "char") {
+        if (code == "c") {
+          openWindow("sh")
+        } elseif (tonumber(code)) {
+          let child = gChildren[tonumber(code)]
+
+          if (child) {
+            focus(child)
+          } else {
+            run status("Can't find window: "..n)
+          }
+        }
+        gInPrefix = false
+      }
+    } elseif (name == "key" && ctrl && code == keys.b) {
+      gInPrefix = true
+
+      ; unpress ctrl
+      if (gLCtrl) {
+        resume(gCurrent, "key_up", keys.leftCtrl)
+      }
+      if (gRCtrl) {
+        resume(gCurrent, "key_up", keys.rightCtrl)
+      }
+    } else {
+      resume(gCurrent, table.unpack(evt))
+    }
+  } else {
+    resumeAll(table.unpack(evt))
+  }
+}
+
+term.redirect(TERM_ORIG)
+term.clear()
+term.setCursorPos(1, 1)
+print("Exited mux")
