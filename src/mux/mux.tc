@@ -269,6 +269,13 @@ while (#gChildren > 0) {
       resume(gCurrent, table.unpack(evt))
     }
   } else {
+    if (name == "term_resize") {
+      TERM_W, TERM_H = term.getSize()
+      gNavBar.reposition(1, TERM_H, TERM_W, 1)
+      for (_, c in ipairs(gChildren)) {
+        c.win.reposition(1, 1, TERM_W, TERM_H-1)
+      }
+    }
     resumeAll(table.unpack(evt))
   }
 }
